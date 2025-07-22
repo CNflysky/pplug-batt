@@ -94,6 +94,17 @@ static gint get_gint_from_infofile(battery *b, gchar *sys_file)
     return value;
 }
 
+static gint get_raw_gint_from_infofile(battery *b, gchar *sys_file) {
+    gchar *file_content = parse_info_file(b, sys_file);
+    gint value = -1;
+
+    if (file_content != NULL)
+        value = atoi(file_content);
+    g_free(file_content);
+
+    return value;
+}
+
 static gchar* get_gchar_from_infofile(battery *b, gchar *sys_file)
 {
     return parse_info_file(b, sys_file);
@@ -255,18 +266,20 @@ battery* battery_update(battery *b)
             b->current_now = b->power_now * 1000 / b->voltage_now;
     }
 #endif
+    b->percentage = get_raw_gint_from_infofile(b, "capacity");
+    if(b->percentage < 0 || b->percentage >100) {
+        if (b->charge_now != -1 && b->charge_full != -1)
+            promille = (b->charge_now * 1000) / b->charge_full;
+        else if (b->energy_full != -1 && b->energy_now != -1)
+            /* no charge data, let try energy instead */
+            promille = (b->energy_now * 1000) / b->energy_full;
+        else
+            promille = 0;
 
-    if (b->charge_now != -1 && b->charge_full != -1)
-        promille = (b->charge_now * 1000) / b->charge_full;
-    else if (b->energy_full != -1 && b->energy_now != -1)
-        /* no charge data, let try energy instead */
-        promille = (b->energy_now * 1000) / b->energy_full;
-    else
-        promille = 0;
-
-    b->percentage = (promille + 5) / 10; /* round properly */
-    if (b->percentage > 100)
-        b->percentage = 100;
+        b->percentage = (promille + 5) / 10; /* round properly */
+        if (b->percentage > 100)
+            b->percentage = 100;
+    }
 
     if (b->power_now < -1)
         b->power_now = - b->power_now;
@@ -380,8 +393,8 @@ gboolean battery_is_charging( battery *b )
 {
     if (!b->state)
         return TRUE; // Same as "Unkown"
-    return ( strcasecmp( b->state, "Unknown" ) == 0
-            || strcasecmp( b->state, "Full" ) == 0
+    return ( /* strcasecmp( b->state, "Unknown" ) == 0 
+            || */ strcasecmp( b->state, "Full" ) == 0
             || strcasecmp( b->state, "Charging" ) == 0
             || b->current_now == 0 ); /* bug sf.net, #720 */
 }
